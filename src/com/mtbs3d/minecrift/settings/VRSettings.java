@@ -141,6 +141,7 @@ public class VRSettings
     public float restrictedCameraUpdateInterval = 0.0f;     // VIVE
     public boolean simulateFalling = true;  // VIVE if HMD is over empty space, teleport down
     public boolean weaponCollision = true;  // VIVE weapon hand collides with blocks/enemies
+    public float triggerSensitivity = 1.0f; // VIVE trigger click point
 
     // TODO: Clean-up all the redundant crap!
     public boolean useDistortionTextureLookupOptimisation = false;
@@ -1362,6 +1363,8 @@ public class VRSettings
                 return this.simulateFalling ? var4 + "ON" : var4 + "OFF";
             case WEAPON_COLLISION:
                 return this.weaponCollision ? var4 + "ON" : var4 + "OFF";
+            case TRIGGER_SENSITIVITY:
+            	return var4 + String.format("%.2f", new Object[] { Float.valueOf(this.triggerSensitivity) });
                 // VIVE END - new options
  	        default:
 	        	return "";
@@ -1499,6 +1502,8 @@ public class VRSettings
             // VIVE START - new options
             case CAMERA_UPDATE_INTERVAL:
                 return restrictedCameraUpdateInterval;
+            case TRIGGER_SENSITIVITY:
+            	return triggerSensitivity;
             // VIVE END - new options
 
             default:
@@ -1933,6 +1938,9 @@ public class VRSettings
             case CAMERA_UPDATE_INTERVAL:
                 this.restrictedCameraUpdateInterval = par2;
                 break;
+            case TRIGGER_SENSITIVITY:
+            	this.triggerSensitivity = par2;
+            	break;
             // VIVE END - new options
             default:
 	        	break;
@@ -2503,6 +2511,12 @@ public class VRSettings
         WEAPON_COLLISION("Weapon collision", false, true),
         // VIVE END - new options
 
+        
+        // VIVE START - Vive controller options
+        TRIGGER_SENSITIVITY("Trigger sensitivity", true, false),
+        // VIVE END - Vive controller options
+        
+        
         // Calibration
         CALIBRATION_STRATEGY("Initial Calibration", false, false),
 

@@ -54,6 +54,8 @@ public class GuiMinecriftSettings extends BaseGuiSettings
             new VROption(VRSettings.VrOptions.VR_HEAD_POSITION,    VROption.Position.POS_RIGHT,  4.25f, VROption.DISABLED, null),
             //new VROption(208,                                      VROption.Position.POS_LEFT,   5.25f, VROption.ENABLED, "Move/Aim Control..."),
             //new VROption(VRSettings.VrOptions.VR_CONTROLLER,       VROption.Position.POS_RIGHT,  5.25f, VROption.DISABLED, null),
+            new VROption(212,                                      VROption.Position.POS_LEFT,   5.25f, VROption.ENABLED, "Vive Controllers..."),
+            //new VROption(VRSettings.VrOptions.VIVE_CONTROLLER,     VROption.Position.POS_RIGHT,  5.25f, VROption.DISABLED, null),
             new VROption(209,                                      VROption.Position.POS_LEFT,   6.25f, VROption.ENABLED, "Locomotion Settings..."),
             new VROption(VRSettings.VrOptions.USE_VR_COMFORT,      VROption.Position.POS_RIGHT,  6.25f, VROption.DISABLED, null)
             // VIVE END - hide options not relevant to teleport/room scale
@@ -206,6 +208,11 @@ public class GuiMinecriftSettings extends BaseGuiSettings
                 Minecraft.getMinecraft().lookaimController.saveOptions();
                 this.mc.displayGuiScreen(new GuiLocomotionSettings(this, this.guivrSettings));
             }
+            else if (par1GuiButton.id == 212)
+            {
+            	Minecraft.getMinecraft().vrSettings.saveOptions();
+            	this.mc.displayGuiScreen(new GuiViveControllerSettings(this, this.guivrSettings));
+            }
             else if (par1GuiButton.id == PROFILES_ID)
             {
                 Minecraft.getMinecraft().vrSettings.saveOptions();
@@ -299,6 +306,11 @@ public class GuiMinecriftSettings extends BaseGuiSettings
                         "Resets the origin point to your current head",
                         "position. HOTKEY - F12 or RCtrl-Ret"
                 };
+            case 212:
+	    		return new String[] {
+	    			"Configure Vive controller settings: " ,
+	    			"Trigger sensitivity, keybinds, etc."
+	    		};
             case PROFILES_ID:
                 return new String[] {
                         "Open this configuration screen to manage",

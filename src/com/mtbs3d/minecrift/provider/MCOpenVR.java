@@ -488,7 +488,7 @@ public class MCOpenVR implements IEyePositionProvider, IOrientationProvider, IBa
 
                 if (controllerDeviceIndex[RIGHT_CONTROLLER] != -1)
                 {
-                    if (controllerStateReference[RIGHT_CONTROLLER].rAxis[k_EAxis_Trigger].x > 0.05)
+                    if (controllerStateReference[RIGHT_CONTROLLER].rAxis[k_EAxis_Trigger].x >= mc.vrSettings.triggerSensitivity)
                     {
                         //click left mouse button
                         if (!leftMouseClicked)
@@ -541,8 +541,8 @@ public class MCOpenVR implements IEyePositionProvider, IOrientationProvider, IBa
                     {
                         boolean pressedPlaceBlock = ((controllerStateReference[RIGHT_CONTROLLER].ulButtonPressed.longValue() & k_nPlaceBlockButton) > 0)
                                 && ((lastControllerState[RIGHT_CONTROLLER].ulButtonPressed.longValue() & k_nPlaceBlockButton) == 0);
-                        boolean pressedAttack = (controllerStateReference[RIGHT_CONTROLLER].rAxis[k_EAxis_Trigger].x > 0.05)
-                                && (lastControllerState[RIGHT_CONTROLLER].rAxis[k_EAxis_Trigger].x <= 0.05);
+                        boolean pressedAttack = (controllerStateReference[RIGHT_CONTROLLER].rAxis[k_EAxis_Trigger].x >= mc.vrSettings.triggerSensitivity)
+                                && (lastControllerState[RIGHT_CONTROLLER].rAxis[k_EAxis_Trigger].x <= mc.vrSettings.triggerSensitivity);
                         if (pressedAttack || pressedPlaceBlock)
                         {
                             mc.thePlayer.closeScreen();
@@ -789,7 +789,7 @@ public class MCOpenVR implements IEyePositionProvider, IOrientationProvider, IBa
 
         if (mc.currentScreen == null && controllerStateReference[RIGHT_CONTROLLER].rAxis[k_EAxis_Trigger]!=null)
         {
-            if (controllerStateReference[RIGHT_CONTROLLER].rAxis[k_EAxis_Trigger].x > 0.05)
+            if (controllerStateReference[RIGHT_CONTROLLER].rAxis[k_EAxis_Trigger].x >= mc.vrSettings.triggerSensitivity)
             {
                 if (!leftMouseClicked)
                     mc.clickMouse();
