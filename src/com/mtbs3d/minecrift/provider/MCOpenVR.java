@@ -1,18 +1,13 @@
 package com.mtbs3d.minecrift.provider;
 
-import com.mtbs3d.minecrift.api.*;
-import com.mtbs3d.minecrift.control.ControlBinding;
-import com.mtbs3d.minecrift.control.GuiScreenNavigator;
-import com.mtbs3d.minecrift.render.QuaternionHelper;
-import com.sun.jna.NativeLibrary;
-import com.sun.jna.Pointer;
-import de.fruitfly.ovr.UserProfileData;
-import de.fruitfly.ovr.enums.*;
-import de.fruitfly.ovr.structs.*;
-import de.fruitfly.ovr.structs.Matrix4f;
-import de.fruitfly.ovr.structs.Vector2f;
-import de.fruitfly.ovr.structs.Vector3f;
-import de.fruitfly.ovr.util.BufferUtil;
+import java.awt.AWTException;
+import java.io.File;
+import java.lang.reflect.Field;
+import java.nio.ByteBuffer;
+import java.nio.FloatBuffer;
+import java.nio.IntBuffer;
+
+import jopenvr.*;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiEnchantment;
 import net.minecraft.client.gui.GuiHopper;
@@ -24,18 +19,29 @@ import net.minecraft.entity.Entity;
 import net.minecraft.item.ItemStack;
 import net.minecraft.util.Vec3;
 import optifine.Utils;
+
 import org.lwjgl.input.Keyboard;
 import org.lwjgl.input.Mouse;
 import org.lwjgl.opengl.Display;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.util.vector.*;
-import jopenvr.*;
 
-import java.io.File;
-import java.lang.reflect.Field;
-import java.nio.ByteBuffer;
-import java.nio.FloatBuffer;
-import java.nio.IntBuffer;
+import com.mtbs3d.minecrift.api.*;
+import com.mtbs3d.minecrift.control.ControlBinding;
+import com.mtbs3d.minecrift.control.GuiScreenNavigator;
+import com.mtbs3d.minecrift.render.QuaternionHelper;
+import com.mtbs3d.minecrift.utils.KeyboardSimulator;
+import com.sun.jna.NativeLibrary;
+import com.sun.jna.Pointer;
+
+import de.fruitfly.ovr.UserProfileData;
+import de.fruitfly.ovr.enums.EyeType;
+import de.fruitfly.ovr.enums.HmdType;
+import de.fruitfly.ovr.structs.*;
+import de.fruitfly.ovr.structs.Matrix4f;
+import de.fruitfly.ovr.structs.Vector2f;
+import de.fruitfly.ovr.structs.Vector3f;
+import de.fruitfly.ovr.util.BufferUtil;
 
 public class MCOpenVR implements IEyePositionProvider, IOrientationProvider, IBasePlugin, IHMDInfo, IStereoProvider,
         IEventNotifier, IEventListener, IBodyAimController
@@ -47,7 +53,15 @@ public class MCOpenVR implements IEyePositionProvider, IOrientationProvider, IBa
     private static Pointer vrsystem;
     private static Pointer vrCompositor;
     private static Pointer vrControlPanel;
+    private static Pointer vrOverlay;
     private static IntBuffer hmdErrorStore;
+    
+    //keyboard
+    private static boolean keyboardShowing = false;
+    byte[] lastTyped = new byte[256];
+    byte[] typed = new byte[256];
+    static int pollsSinceLastChange = 0;
+    KeyboardSimulator keyboard;
 
     private static TrackedDevicePose_t.ByReference hmdTrackedDevicePoseReference;
     private static TrackedDevicePose_t[] hmdTrackedDevicePoses;
@@ -98,7 +112,7 @@ public class MCOpenVR implements IEyePositionProvider, IOrientationProvider, IBa
     private static long k_nInventoryButton = (1L << JOpenVRLibrary.EVRButtonId.EVRButtonId_k_EButton_SteamVR_Touchpad);
     private static long k_nTeleportButton = (1L << JOpenVRLibrary.EVRButtonId.EVRButtonId_k_EButton_SteamVR_Trigger);
     private static long k_nEscapeMenuButton = (1L << JOpenVRLibrary.EVRButtonId.EVRButtonId_k_EButton_ApplicationMenu);
-    private static long k_nQuickTorchButton = (1L << JOpenVRLibrary.EVRButtonId.EVRButtonId_k_EButton_Grip);
+    private static long k_nSneakButton = (1L << JOpenVRLibrary.EVRButtonId.EVRButtonId_k_EButton_Grip);
     private static long k_nDropButton = (1L << JOpenVRLibrary.EVRButtonId.EVRButtonId_k_EButton_ApplicationMenu);
     private static long k_nJumpButton = (1L << JOpenVRLibrary.EVRButtonId.EVRButtonId_k_EButton_Grip);
 
@@ -236,6 +250,15 @@ public class MCOpenVR implements IEyePositionProvider, IOrientationProvider, IBa
 
         if ( !initOpenVRControlPanel() )
             return false;
+        
+        if ( !initOpenVROverlay() )
+        	return false;
+        
+        try {
+        	keyboard = new KeyboardSimulator();
+        } catch (AWTException e) {
+        	System.out.println("Error Initializing Keyboard Simulator");
+        }
 
         try {
             keyDownField = Keyboard.class.getDeclaredField("keyDownBuffer");
@@ -311,7 +334,20 @@ public class MCOpenVR implements IEyePositionProvider, IOrientationProvider, IBa
             return false;
         }
     }
-
+    
+    // needed for in-game keyboard
+    public boolean initOpenVROverlay()
+    {
+    	vrOverlay = JOpenVRLibrary.VR_GetGenericInterface(JOpenVRLibrary.IVROverlay_Version, hmdErrorStore);
+    	if (vrOverlay != null & hmdErrorStore.get(0) == 0) {
+    		System.out.println("OpenVR Overlay initialized OK");
+    		return true;
+    	} else {
+    		initStatus = "OpenVR Overlay error: " + JOpenVRLibrary.VR_GetStringForHmdError(hmdErrorStore.get(0)).getString(0);
+    		return false;
+    	}
+    }
+    
     @Override
     public void poll(long frameIndex)
     {
@@ -320,7 +356,44 @@ public class MCOpenVR implements IEyePositionProvider, IOrientationProvider, IBa
         updateControllerButtonState();
         updateTouchpadSampleBuffer();
         updateSmoothedVelocity();
-
+        
+        if (frameIndex % 5 == 0 && keyboardShowing) {
+        	ByteBuffer buf = ByteBuffer.wrap(typed);
+            JOpenVRLibrary.VR_IVROverlay_GetKeyboardText(vrOverlay, buf, 256);
+            //System.out.println(new String(buf.array()));
+            //System.out.println(buf.array()[0]);
+            
+            int lastIndex = 0;
+            for (int i = 0; i < lastTyped.length; i++) {
+            	if (lastTyped[i] == 0) {
+            		lastIndex = i;
+            		break;
+            	}
+            }
+            if (lastIndex > 0 && typed[lastIndex - 1] == 0 && lastTyped[lastIndex - 1] != 0) { // Backspaced
+            	System.out.println("Backspaced");
+            	pollsSinceLastChange = 0;
+            	keyboard.type('\b');
+            } else if (typed[lastIndex] != 0 && lastTyped[lastIndex] == 0) { // Added new char
+            	System.out.println("Typed: " + (char)typed[lastIndex]);
+            	pollsSinceLastChange = 0;
+            	if ((char)typed[lastIndex] == ',') { // Because I can't listen for events and apparently the steam keyboard doesn't input a character when the user hits return
+            		keyboard.type('\r'); // Comma simulates enter. Need something better for this. Need events.
+            		setKeyboardOverlayShowing(false); // This is the only way to close the keyboard and have the code know about it. Again, events would remove this jankiness
+            	} else { // Otherwise treat it like a normal character
+            		keyboard.type((char)typed[lastIndex]);
+            	}
+            }
+            
+            lastTyped = typed.clone();
+        }
+        if (keyboardShowing) pollsSinceLastChange++;
+    	if (pollsSinceLastChange > 900) { // TODO: Make this time-based to account for different framerates
+    		keyboardShowing = false;
+    		pollsSinceLastChange = 0;
+    		setKeyboardOverlayShowing(false); // Just to be sure
+    	}
+        
         processControllerButtons();
         processTouchpadSampleBuffer();
 
@@ -706,12 +779,13 @@ public class MCOpenVR implements IEyePositionProvider, IOrientationProvider, IBa
         KeyBinding keyBindDrop = mc.gameSettings.keyBindDrop;
         KeyBinding keyBindTeleport = mc.gameSettings.keyBindForward;
         KeyBinding keyBindJump = mc.gameSettings.keyBindJump;
+        KeyBinding keyBindSneak = mc.gameSettings.keyBindSneak;
 
         boolean gui = (mc.currentScreen != null);
         boolean sleeping = (mc.thePlayer != null && mc.thePlayer.isPlayerSleeping());
 
         // right controller
-        processQuickTorchButton();
+        //processQuickTorchButton();
 
         if (mc.currentScreen == null && controllerStateReference[RIGHT_CONTROLLER].rAxis[k_EAxis_Trigger]!=null)
         {
@@ -738,9 +812,13 @@ public class MCOpenVR implements IEyePositionProvider, IOrientationProvider, IBa
             }
             keyBindUseItem.pressed = (controllerStateReference[RIGHT_CONTROLLER].ulButtonPressed.longValue() & k_nPlaceBlockButton) > 0;
         }
-
-        keyBindDrop.pressed = (!gui && (controllerStateReference[RIGHT_CONTROLLER].ulButtonPressed.longValue() & k_nDropButton) > 0);
-
+        
+        //keyBindDrop.pressed = (!gui && (controllerStateReference[RIGHT_CONTROLLER].ulButtonPressed.longValue() & k_nDropButton) > 0);
+        boolean keyBindDropPressed = (!gui && (controllerStateReference[RIGHT_CONTROLLER].ulButtonPressed.longValue() & k_nDropButton) > 0);
+        if (keyBindDropPressed && !keyboardShowing) {
+        	setKeyboardOverlayShowing(true);
+        }
+        
         // left controller
         if ( (controllerStateReference[LEFT_CONTROLLER].ulButtonPressed.longValue() & k_nInventoryButton) > 0 &&
                 (lastControllerState[LEFT_CONTROLLER].ulButtonPressed.longValue() & k_nInventoryButton) == 0)
@@ -781,7 +859,12 @@ public class MCOpenVR implements IEyePositionProvider, IOrientationProvider, IBa
         }
         // in restricted mode, allow jumping
         keyBindJump.pressed = (mc.vrPlayer.restrictedViveClient && (controllerStateReference[LEFT_CONTROLLER].ulButtonPressed.longValue() & k_nJumpButton) > 0);
-
+        keyBindSneak.pressed = (mc.vrPlayer.restrictedViveClient && (controllerStateReference[RIGHT_CONTROLLER].ulButtonPressed.longValue() & k_nSneakButton) > 0);
+        
+  /**/	if ((controllerStateReference[LEFT_CONTROLLER].ulButtonPressed.longValue() & k_nJumpButton) > 0) {
+			
+		}
+        
         if ( (controllerStateReference[LEFT_CONTROLLER].ulButtonPressed.longValue() & k_nEscapeMenuButton) > 0 &&
                 (lastControllerState[LEFT_CONTROLLER].ulButtonPressed.longValue() & k_nEscapeMenuButton) == 0)
         {
@@ -806,8 +889,8 @@ public class MCOpenVR implements IEyePositionProvider, IOrientationProvider, IBa
         if (mc.thePlayer != null)
         {
             // switch to quicktorch
-            if ((controllerStateReference[c].ulButtonPressed.longValue() & k_nQuickTorchButton) > 0 &&
-                    (lastControllerState[c].ulButtonPressed.longValue() & k_nQuickTorchButton) == 0)
+            if ((controllerStateReference[c].ulButtonPressed.longValue() & k_nSneakButton) > 0 &&
+                    (lastControllerState[c].ulButtonPressed.longValue() & k_nSneakButton) == 0)
             {
                 // search hotbar for torches
                 for (int slot=0;slot<9;slot++)
@@ -915,6 +998,17 @@ public class MCOpenVR implements IEyePositionProvider, IOrientationProvider, IBa
                 }
             }
         }
+    }
+    
+    public static int setKeyboardOverlayShowing(boolean showingState) {
+    	keyboardShowing = showingState;
+    	if (showingState) {
+    		pollsSinceLastChange = 0; // User deliberately tried to show keyboard, shouldn't have chance of immediately resetting
+    		return JOpenVRLibrary.VR_IVROverlay_ShowKeyboard(vrOverlay, 0, 0, "Minecrift Typing", 256, "", (byte)0, 0L);
+    	} else {
+    		JOpenVRLibrary.VR_IVROverlay_HideKeyboard(vrOverlay);
+    		return 0;
+    	}
     }
 
     public void updatePose()
